@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PROFILER PRO - SEC Timeline</title>
+    <title>PROFILER PRO - Fix Upload</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -28,7 +28,7 @@
         #drop-zone { position: fixed; inset: 0; background: rgba(103, 80, 164, 0.15); backdrop-filter: blur(8px); z-index: 9999; display: none; align-items: center; justify-content: center; border: 4px dashed var(--primary); margin: 16px; border-radius: 32px; pointer-events: none; }
         #drop-zone.active { display: flex; }
 
-        /* 看板与解析反馈 */
+        /* 看板 & 解析反馈 */
         .metrics-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
         .stat-card { background: var(--sec-container); border-radius: 24px; padding: 20px; position: relative; overflow: hidden; height: 100px; }
         .stat-card .val { font-size: 26px; font-weight: 900; }
@@ -38,7 +38,7 @@
 
         .chart-box { height: 320px; margin-bottom: 24px; background: var(--surface); border-radius: 24px; padding: 16px; border: 1px solid var(--outline-variant); }
 
-        /* 精准 Chip */
+        /* 精准紫色 Chip */
         .anon-tag { background-color: var(--primary-container); color: var(--on-primary-container); padding: 2px 10px; border-radius: 8px; font-size: 12px; font-weight: 800; border: 1px solid var(--primary); margin-right: 8px; display: inline-block; }
         .file-info { font-family: 'Fira Code', monospace; font-size: 13px; opacity: 0.7; }
 
@@ -73,6 +73,11 @@
         .fab-main { background: var(--primary-container); color: var(--on-primary-container); }
         .fab-sub { background: var(--surface); color: var(--primary); transform: scale(0); opacity: 0; visibility: hidden; border: 1px solid var(--outline-variant); transition: 0.2s; }
         .fab-group.open .fab-sub { transform: scale(1); opacity: 1; visibility: visible; }
+
+        /* Modal */
+        .modal-scrim { position: fixed; inset: 0; background: var(--scrim); display: none; align-items: center; justify-content: center; z-index: 2000; backdrop-filter: blur(4px); }
+        .modal-content { background: var(--surface); width: 90%; max-width: 500px; border-radius: 28px; padding: 24px; }
+        .modal-content textarea { width: 100%; height: 200px; border-radius: 16px; background: var(--surface-variant); border: none; padding: 16px; margin: 16px 0; outline: none; color: var(--on-surface); resize: none; box-sizing: border-box; font-family: monospace; }
     </style>
 </head>
 <body>
@@ -89,7 +94,7 @@
         <div class="stat-card">
             <div id="p-loader" class="parse-overlay">
                 <div class="spinner"></div>
-                <div id="p-text" style="font-weight:800; font-size:12px;">正在解析数据结构...</div>
+                <div id="p-text" style="font-weight:800; font-size:12px;">正在解析...</div>
             </div>
             <label style="font-size:11px; font-weight:800; opacity:0.6;">函数总运行次数</label>
             <div class="val" id="v-samples">0</div>
@@ -117,13 +122,24 @@
     <div id="list-container"></div>
 </div>
 
+<div class="modal-scrim" id="modal">
+    <div class="modal-content">
+        <h3 style="margin:0; font-weight:900;">手动粘贴数据</h3>
+        <textarea id="jsonInput" placeholder="在此粘贴 CPU Profile JSON..."></textarea>
+        <div style="display:flex; justify-content: flex-end; gap:12px">
+            <button onclick="closeModal()" style="color:var(--primary); background:none; border:none; font-weight:700; cursor:pointer;">取消</button>
+            <button onclick="handleManual()" style="background:var(--primary); color:var(--on-primary); border:none; padding:10px 24px; border-radius:20px; font-weight:800; cursor:pointer;">开始解析</button>
+        </div>
+    </div>
+</div>
+
 <div class="fab-group" id="fabGroup">
     <button class="fab-btn fab-main" onclick="toggleFab()"><i class="fas fa-plus"></i></button>
     <button class="fab-btn fab-sub" onclick="document.getElementById('fileInput').click()"><i class="fas fa-file-upload"></i></button>
     <button class="fab-btn fab-sub" onclick="openModal()"><i class="fas fa-code"></i></button>
 </div>
 
-<input type="file" id="fileInput" hidden accept=".cpuprofile,.json">
+<input type="file" id="fileInput" hidden accept=".cpuprofile,.json" onchange="handleFile(this.files[0])">
 
 <script>
     const dropZone = document.getElementById('drop-zone');
@@ -132,9 +148,11 @@
     window.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('active'); handleFile(e.dataTransfer.files[0]); });
 
     function toggleFab() { document.getElementById('fabGroup').classList.toggle('open'); }
+    function openModal() { document.getElementById('modal').style.display = 'flex'; toggleFab(); }
+    function closeModal() { document.getElementById('modal').style.display = 'none'; }
     function toggleExpand(el) { el.classList.toggle('expanded'); }
 
-    // --- Worker 解析逻辑优化 ---
+    // --- Worker 解析逻辑 ---
     const workerBlob = new Blob([`
         self.onmessage = function(e) {
             const { nodes, samples, timeDeltas } = e.data;
@@ -142,13 +160,12 @@
             const stats = {};
             let currentTime = 0;
             
-            // 实时进度反馈可通过 message 发送，这里优化基础耗时统计
             const timeline = samples.map((id, i) => {
                 currentTime += (timeDeltas[i] || 0);
                 if(!stats[id]) stats[id] = { h: 0, t: 0 };
                 stats[id].h++;
                 stats[id].t += (timeDeltas[i] || 0);
-                return { id, ts: currentTime / 1000000 }; // 存为 s (秒)
+                return { id, ts: currentTime / 1000000 }; 
             });
 
             const funcs = Object.keys(stats).map(id => {
@@ -184,7 +201,7 @@
         document.getElementById('v-time').innerText = e.data.totalTime.toFixed(1) + " ms";
         selectedIds = new Set(allFuncs.sort((a,b)=>b.total-a.total).slice(0,3).map(f=>f.id));
         renderUI(); 
-        initChart(e.data.totalTime / 1000); // 传入秒
+        initChart(e.data.totalTime / 1000); 
     };
 
     function renderUI() {
@@ -224,12 +241,10 @@
         }).join('');
     }
 
-    // --- 图表 X 轴改为 s ---
     function initChart(totalSeconds) {
         const ctx = document.getElementById('mainChart').getContext('2d');
         if(chartObj) chartObj.destroy();
         const labels = Array.from({length:60}, (_,i) => ((totalSeconds/59)*i).toFixed(3) + "s");
-        
         chartObj = new Chart(ctx, {
             type: 'line', 
             data: { labels: labels, datasets: [] },
@@ -249,7 +264,7 @@
                     }
                 }, 
                 scales:{ 
-                    x:{ grid:{display:false}, ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:8, color: '#999' } },
+                    x:{ grid:{display:false}, ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:8 } },
                     y:{ beginAtZero:true, grid:{color:'rgba(0,0,0,0.05)'} } 
                 } 
             }
@@ -273,12 +288,42 @@
         chartObj.update('none');
     }
 
-    function handleFile(file) { if(file) { const r = new FileReader(); r.onload = ev => { rawDataRef = JSON.parse(ev.target.result); startParsing(); }; r.readAsText(file); } }
+    // --- 修复后的上传 & 解析触发 ---
+    function handleFile(file) { 
+        if(!file) return; 
+        const r = new FileReader(); 
+        r.onload = ev => { 
+            try {
+                rawDataRef = JSON.parse(ev.target.result); 
+                startParsing(); 
+            } catch(e) {
+                alert("文件解析 JSON 失败");
+            }
+        }; 
+        r.readAsText(file); 
+        // 重置 input 以便重复上传相同文件
+        document.getElementById('fileInput').value = "";
+    }
+
+    function handleManual() { 
+        try { 
+            rawDataRef = JSON.parse(document.getElementById('jsonInput').value); 
+            startParsing(); 
+            closeModal(); 
+        } catch(e) { 
+            alert("JSON 格式错误，请检查粘贴内容"); 
+        } 
+    }
+
     function startParsing() { 
         document.getElementById('p-loader').style.display='flex'; 
         document.getElementById('p-text').innerText = "正在计算执行轨迹...";
-        setTimeout(() => worker.postMessage(rawDataRef), 50); 
+        // 使用 setTimeout 确保 UI 动画能渲染出来
+        setTimeout(() => {
+            worker.postMessage(rawDataRef);
+        }, 100);
     }
+
     function toggleTheme() { document.documentElement.setAttribute('data-theme', document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'); }
     function switchView(v) { currentView=v; renderUI(); document.getElementById('tab-raw').classList.toggle('active-btn', v==='raw'); document.getElementById('tab-logical').classList.toggle('active-btn', v==='logical'); }
     function setSort(k) { sortKey=k; renderUI(); ['s-total','s-h','s-avg'].forEach(id=>document.getElementById(id).classList.toggle('active-btn', id==='s-'+k)); }
