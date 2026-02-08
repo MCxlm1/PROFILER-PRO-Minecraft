@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PROFILER PRO - Professional Edition</title>
+    <title>PROFILER PRO - Professional Logic Edition</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -42,6 +42,9 @@
         
         .func-chip { background: var(--primary-container); color: var(--on-primary-container); padding: 6px 16px; border-radius: 14px; font-size: 15px; font-weight: 900; display: inline-block; border: 1.5px solid var(--primary); }
         .loc-tag { font-weight: 800; font-size: 14px; margin-left: 10px; opacity: 0.9; }
+        /* 折叠计数徽标 */
+        .collapse-badge { background: transparent; border: 1.5px solid var(--primary); color: var(--primary); font-size: 12px; font-weight: 900; padding: 2px 8px; border-radius: 10px; margin-left: 8px; vertical-align: middle; }
+        
         .full-path { display: block; opacity: 0.5; font-size: 12px; font-family: 'Fira Code', monospace; margin-top: 8px; word-break: break-all; }
 
         .card-metrics { display: flex; gap: 12px; margin-top: 20px; }
@@ -138,10 +141,12 @@
                 const f = nodeMap.get(parseInt(id)).callFrame;
                 const fileName = f.url ? f.url.split('/').pop() : 'unknown';
                 const isAnon = !f.functionName || f.functionName === "<anonymous>" || f.functionName === "";
+                const loc = fileName + ':' + (f.lineNumber || 0);
                 return {
                     id: parseInt(id), name: isAnon ? "匿名函数" : f.functionName, isAnon,
                     fullPath: f.url || "internal", 
-                    locInfo: fileName + ':' + (f.lineNumber || 0),
+                    locInfo: loc,
+                    displayName: (isAnon ? "匿名函数" : f.functionName) + " (" + loc + ")",
                     h: stats[id].h, total: stats[id].t / 1000, avg: (stats[id].t / 1000) / stats[id].h
                 };
             });
@@ -175,7 +180,8 @@
         
         container.innerHTML = sorted.map(d => {
             const isCardActive = (currentView === 'raw' && selectedIds.has(d.id));
-            const nameHtml = `<div><span class="func-chip">${d.name}</span><span class="loc-tag">${d.locInfo}</span><span class="full-path">${d.fullPath}</span></div>`;
+            const countBadge = currentView === 'logical' ? `<span class="collapse-badge">+${d.children.length}</span>` : '';
+            const nameHtml = `<div><span class="func-chip">${d.name}</span>${countBadge}<span class="loc-tag">${d.locInfo}</span><span class="full-path">${d.fullPath}</span></div>`;
             const metricsHtml = `<div class="card-metrics"><div class="m-block"><label>总耗时</label><span>${d.total.toFixed(1)}ms</span></div><div class="m-block"><label>次数</label><span>${d.h}</span></div><div class="m-block"><label>平均</label><span>${d.avg.toFixed(3)}ms</span></div></div>`;
 
             if(currentView === 'raw') {
@@ -221,7 +227,12 @@
             type: 'line', data: { labels: Array.from({length:60}, (_,i) => ((totalSeconds/59)*i).toFixed(3) + "s"), datasets: [] },
             options: { 
                 responsive:true, maintainAspectRatio:false, interaction:{mode:'index', intersect:false},
-                plugins:{ legend:{display:false}, tooltip:{enabled:true, backgroundColor:'rgba(29,27,32,0.95)', padding:16, cornerRadius:16, callbacks: { title: (c) => `时间点: ${c[0].label}`, label: (c) => ` ${c.dataset.label}: ${c.parsed.y} 次` }} },
+                plugins:{ legend:{display:false}, tooltip:{enabled:true, backgroundColor:'rgba(29,27,32,0.95)', padding:16, cornerRadius:16, 
+                    callbacks: { 
+                        title: (c) => `时间点: ${c[0].label}`, 
+                        label: (c) => ` ${c.dataset.label}: ${c.parsed.y} 次` 
+                    } 
+                } },
                 scales:{ x:{grid:{display:false}}, y:{beginAtZero:true, grid:{color:'rgba(0,0,0,0.05)'}} }
             }
         });
@@ -231,7 +242,7 @@
         const top = allFuncs.filter(f=>selectedIds.has(f.id)).slice(0,10);
         const step = Math.ceil(timelineData.length / 60);
         chartObj.data.datasets = top.map((f,i) => ({
-            label: f.name,
+            label: f.displayName, // 这里使用了增强后的 displayName
             data: Array.from({length:60}, (_,j) => {
                 const chunk = timelineData.slice(j*step, (j+1)*step);
                 return chunk.filter(p => p.id === f.id).length;
