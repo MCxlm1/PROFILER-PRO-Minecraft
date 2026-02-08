@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PROFILER PRO - Full Interactive</title>
+    <title>PROFILER PRO - SEC Timeline</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -28,26 +28,26 @@
         #drop-zone { position: fixed; inset: 0; background: rgba(103, 80, 164, 0.15); backdrop-filter: blur(8px); z-index: 9999; display: none; align-items: center; justify-content: center; border: 4px dashed var(--primary); margin: 16px; border-radius: 32px; pointer-events: none; }
         #drop-zone.active { display: flex; }
 
-        /* 精准紫色 Chip */
-        .anon-tag { background-color: var(--primary-container); color: var(--on-primary-container); padding: 2px 10px; border-radius: 8px; font-size: 12px; font-weight: 800; border: 1px solid var(--primary); margin-right: 8px; display: inline-block; }
-        .file-info { font-family: 'Fira Code', monospace; font-size: 13px; opacity: 0.7; }
-
-        /* 看板指标 */
+        /* 看板与解析反馈 */
         .metrics-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
         .stat-card { background: var(--sec-container); border-radius: 24px; padding: 20px; position: relative; overflow: hidden; height: 100px; }
         .stat-card .val { font-size: 26px; font-weight: 900; }
-        .parse-overlay { position: absolute; inset: 0; background: var(--primary); color: var(--on-primary); display: none; align-items: center; justify-content: center; z-index: 10; }
+        .parse-overlay { position: absolute; inset: 0; background: var(--primary); color: var(--on-primary); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 10; gap: 8px; }
+        .spinner { width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* 图表容器 */
         .chart-box { height: 320px; margin-bottom: 24px; background: var(--surface); border-radius: 24px; padding: 16px; border: 1px solid var(--outline-variant); }
 
-        /* 卡片设计 */
-        .func-card { background: var(--surface); border-radius: 24px; padding: 20px; border: 1px solid var(--outline-variant); margin-bottom: 16px; cursor: pointer; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
-        .func-card:hover { background: var(--surface-variant); }
-        .func-card.active { border: 2.5px solid var(--primary); box-shadow: 0 4px 12px rgba(103, 80, 164, 0.1); }
+        /* 精准 Chip */
+        .anon-tag { background-color: var(--primary-container); color: var(--on-primary-container); padding: 2px 10px; border-radius: 8px; font-size: 12px; font-weight: 800; border: 1px solid var(--primary); margin-right: 8px; display: inline-block; }
+        .file-info { font-family: 'Fira Code', monospace; font-size: 13px; opacity: 0.7; }
 
+        /* 卡片 & 右侧展开 */
+        .func-card { background: var(--surface); border-radius: 24px; padding: 20px; border: 1px solid var(--outline-variant); margin-bottom: 16px; cursor: pointer; transition: 0.25s; }
+        .func-card:hover { background: var(--surface-variant); }
+        .func-card.active { border: 2.5px solid var(--primary); }
         .expand-header { display: flex; justify-content: space-between; align-items: center; }
-        .expand-icon { transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); color: var(--primary); padding: 4px; }
+        .expand-icon { transition: transform 0.4s; color: var(--primary); font-size: 18px; }
         .expanded .expand-icon { transform: rotate(180deg); }
 
         /* 指标组平铺 */
@@ -56,17 +56,13 @@
         .m-web-item label { font-size: 10px; font-weight: 800; opacity: 0.6; }
         .m-web-item span { font-size: 14px; font-weight: 900; }
 
-        /* 丝滑 Grid 折叠 */
-        .expand-wrapper { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        /* 丝滑 Grid 动画 */
+        .expand-wrapper { display: grid; grid-template-rows: 0fr; transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
         .expanded .expand-wrapper { grid-template-rows: 1fr; }
         .expand-inner { overflow: hidden; }
 
-        .sub-entry { display: flex; flex-direction: column; padding: 12px; background: var(--surface-variant); border-radius: 16px; margin-top: 8px; position: relative; overflow: hidden; border: 1px solid var(--outline-variant); }
-        .sub-progress { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--primary); opacity: 0.4; }
-
-        /* 分段选择器 */
-        .nav-section { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
-        @media (min-width: 800px) { .nav-section { flex-direction: row; justify-content: space-between; align-items: center; } }
+        /* 导航与排序 */
+        .nav-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .view-tabs, .sort-box { display: flex; background: var(--surface-variant); padding: 4px; border-radius: 20px; }
         .v-tab, .sort-pill { padding: 8px 16px; cursor: pointer; font-weight: 700; border-radius: 16px; border:none; background:transparent; font-size: 13px; color: var(--on-surface); }
         .active-btn { background: var(--primary) !important; color: var(--on-primary) !important; }
@@ -75,12 +71,8 @@
         .fab-group { position: fixed; right: 24px; bottom: 24px; z-index: 1000; display: flex; flex-direction: column-reverse; gap: 12px; }
         .fab-btn { width: 56px; height: 56px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 22px; cursor: pointer; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         .fab-main { background: var(--primary-container); color: var(--on-primary-container); }
-        .fab-sub { background: var(--surface); color: var(--primary); transform: scale(0); opacity: 0; visibility: hidden; border: 1px solid var(--outline-variant); }
+        .fab-sub { background: var(--surface); color: var(--primary); transform: scale(0); opacity: 0; visibility: hidden; border: 1px solid var(--outline-variant); transition: 0.2s; }
         .fab-group.open .fab-sub { transform: scale(1); opacity: 1; visibility: visible; }
-
-        .modal-scrim { position: fixed; inset: 0; background: var(--scrim); display: none; align-items: center; justify-content: center; z-index: 2000; backdrop-filter: blur(4px); }
-        .modal-content { background: var(--surface); width: 90%; max-width: 500px; border-radius: 28px; padding: 24px; border: 1px solid var(--outline-variant); }
-        .modal-content textarea { width: 100%; height: 200px; border-radius: 16px; background: var(--surface-variant); border: none; padding: 16px; margin: 16px 0; outline: none; color: var(--on-surface); font-family: monospace; resize: none; box-sizing: border-box; }
     </style>
 </head>
 <body>
@@ -95,7 +87,10 @@
 
     <div class="metrics-bar">
         <div class="stat-card">
-            <div id="p-loader" class="parse-overlay"><div id="p-text" style="font-weight:800;">解析中 0%</div></div>
+            <div id="p-loader" class="parse-overlay">
+                <div class="spinner"></div>
+                <div id="p-text" style="font-weight:800; font-size:12px;">正在解析数据结构...</div>
+            </div>
             <label style="font-size:11px; font-weight:800; opacity:0.6;">函数总运行次数</label>
             <div class="val" id="v-samples">0</div>
         </div>
@@ -128,42 +123,34 @@
     <button class="fab-btn fab-sub" onclick="openModal()"><i class="fas fa-code"></i></button>
 </div>
 
-<div class="modal-scrim" id="modal">
-    <div class="modal-content">
-        <h3 style="margin:0; font-weight:900;">手动粘贴数据</h3>
-        <textarea id="jsonInput" placeholder="在此粘贴 JSON..."></textarea>
-        <div style="display:flex; justify-content: flex-end; gap:12px">
-            <button onclick="closeModal()" style="background:none; border:none; color:var(--primary); font-weight:700; cursor:pointer;">取消</button>
-            <button onclick="handleManual()" style="background:var(--primary); color:var(--on-primary); border:none; padding:10px 24px; border-radius:20px; font-weight:800; cursor:pointer;">开始解析</button>
-        </div>
-    </div>
-</div>
-
 <input type="file" id="fileInput" hidden accept=".cpuprofile,.json">
 
 <script>
-    // --- 交互基础 ---
     const dropZone = document.getElementById('drop-zone');
     window.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('active'); });
     window.addEventListener('dragleave', e => { if (!e.relatedTarget) dropZone.classList.remove('active'); });
     window.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('active'); handleFile(e.dataTransfer.files[0]); });
 
     function toggleFab() { document.getElementById('fabGroup').classList.toggle('open'); }
-    function openModal() { document.getElementById('modal').style.display = 'flex'; toggleFab(); }
-    function closeModal() { document.getElementById('modal').style.display = 'none'; }
     function toggleExpand(el) { el.classList.toggle('expanded'); }
 
-    // --- Worker 解析 ---
+    // --- Worker 解析逻辑优化 ---
     const workerBlob = new Blob([`
         self.onmessage = function(e) {
             const { nodes, samples, timeDeltas } = e.data;
             const nodeMap = new Map(nodes.map(n => [n.id, n]));
             const stats = {};
-            samples.forEach((id, i) => {
+            let currentTime = 0;
+            
+            // 实时进度反馈可通过 message 发送，这里优化基础耗时统计
+            const timeline = samples.map((id, i) => {
+                currentTime += (timeDeltas[i] || 0);
                 if(!stats[id]) stats[id] = { h: 0, t: 0 };
                 stats[id].h++;
                 stats[id].t += (timeDeltas[i] || 0);
+                return { id, ts: currentTime / 1000000 }; // 存为 s (秒)
             });
+
             const funcs = Object.keys(stats).map(id => {
                 const f = nodeMap.get(parseInt(id)).callFrame;
                 const fileName = f.url ? f.url.split('/').pop() : 'unknown';
@@ -175,16 +162,17 @@
                     h: stats[id].h, total: stats[id].t / 1000, avg: (stats[id].t / 1000) / stats[id].h
                 };
             });
-            self.postMessage({type:'done', funcs, samplesCount: samples.length, totalTime: timeDeltas.reduce((a,b)=>a+b,0)/1000});
+            self.postMessage({type:'done', funcs, timeline, samplesCount: samples.length, totalTime: currentTime/1000});
         };
     `], {type: 'application/javascript'});
 
     const worker = new Worker(URL.createObjectURL(workerBlob));
-    let allFuncs = [], logicalFuncs = [], selectedIds = new Set(), chartObj = null, currentView = 'raw', sortKey = 'total', rawDataRef = null;
+    let allFuncs = [], logicalFuncs = [], timelineData = [], selectedIds = new Set(), chartObj = null, currentView = 'raw', sortKey = 'total', rawDataRef = null;
 
     worker.onmessage = e => {
         document.getElementById('p-loader').style.display = 'none';
         allFuncs = e.data.funcs;
+        timelineData = e.data.timeline;
         const lMap = {};
         allFuncs.forEach(f => {
             const key = f.isAnon ? "匿名函数" + f.fileInfo : f.name;
@@ -195,7 +183,8 @@
         document.getElementById('v-samples').innerText = e.data.samplesCount.toLocaleString();
         document.getElementById('v-time').innerText = e.data.totalTime.toFixed(1) + " ms";
         selectedIds = new Set(allFuncs.sort((a,b)=>b.total-a.total).slice(0,3).map(f=>f.id));
-        renderUI(); initChart();
+        renderUI(); 
+        initChart(e.data.totalTime / 1000); // 传入秒
     };
 
     function renderUI() {
@@ -235,52 +224,61 @@
         }).join('');
     }
 
-    // --- 图表核心与悬停信息 ---
-    function initChart() {
+    // --- 图表 X 轴改为 s ---
+    function initChart(totalSeconds) {
         const ctx = document.getElementById('mainChart').getContext('2d');
         if(chartObj) chartObj.destroy();
+        const labels = Array.from({length:60}, (_,i) => ((totalSeconds/59)*i).toFixed(3) + "s");
+        
         chartObj = new Chart(ctx, {
             type: 'line', 
-            data: { labels: Array.from({length:60}, (_,i)=>i), datasets: [] },
+            data: { labels: labels, datasets: [] },
             options: { 
-                responsive:true, maintainAspectRatio:false, 
+                responsive:true, maintainAspectRatio:false,
                 interaction: { mode: 'index', intersect: false },
                 plugins:{ 
-                    legend:{ display:false },
+                    legend:{display:false},
                     tooltip: {
                         enabled: true,
                         backgroundColor: 'rgba(29, 27, 32, 0.9)',
-                        titleFont: { size: 13, weight: 'bold' },
-                        bodyFont: { size: 12 },
-                        padding: 12,
-                        cornerRadius: 12,
-                        callbacks: {
-                            label: (context) => ` ${context.dataset.label}: ${context.parsed.y} 次`
+                        padding: 12, cornerRadius: 12,
+                        callbacks: { 
+                            title: (items) => `时间点: ${items[0].label}`,
+                            label: (c) => ` ${c.dataset.label}: ${c.parsed.y} 次` 
                         }
                     }
                 }, 
-                scales:{ x:{display:false}, y:{beginAtZero:true, grid:{ color: 'rgba(0,0,0,0.05)' }} } 
+                scales:{ 
+                    x:{ grid:{display:false}, ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:8, color: '#999' } },
+                    y:{ beginAtZero:true, grid:{color:'rgba(0,0,0,0.05)'} } 
+                } 
             }
         });
         updateChart();
     }
 
     function updateChart() {
-        if(!chartObj || !rawDataRef) return;
-        const step = Math.ceil(rawDataRef.samples.length/60);
+        if(!chartObj || !timelineData.length) return;
+        const step = Math.ceil(timelineData.length / 60);
         const top = allFuncs.filter(f=>selectedIds.has(f.id)).slice(0,10);
         chartObj.data.datasets = top.map((f,i) => ({
             label: f.isAnon ? "匿名函数"+f.fileInfo : f.name,
-            data: Array.from({length:60}, (_,j)=>rawDataRef.samples.slice(j*step,(j+1)*step).filter(id=>id==f.id).length),
-            borderColor: ['#6750A4','#00BFA5','#FF5252','#FFAB40','#448AFF'][i%5], 
-            tension:0.4, borderWidth:2.5, pointRadius:0, hoverPointRadius: 6
+            data: Array.from({length:60}, (_,j) => {
+                const chunk = timelineData.slice(j*step, (j+1)*step);
+                return chunk.filter(p => p.id === f.id).length;
+            }),
+            borderColor: ['#6750A4','#00BFA5','#FF5252','#FFAB40','#448AFF'][i%5],
+            tension:0.4, borderWidth:2.5, pointRadius:0, hoverPointRadius:6
         }));
         chartObj.update('none');
     }
 
     function handleFile(file) { if(file) { const r = new FileReader(); r.onload = ev => { rawDataRef = JSON.parse(ev.target.result); startParsing(); }; r.readAsText(file); } }
-    function handleManual() { try { rawDataRef = JSON.parse(document.getElementById('jsonInput').value); startParsing(); closeModal(); } catch(e) { alert("JSON格式错误"); } }
-    function startParsing() { document.getElementById('p-loader').style.display='flex'; worker.postMessage(rawDataRef); }
+    function startParsing() { 
+        document.getElementById('p-loader').style.display='flex'; 
+        document.getElementById('p-text').innerText = "正在计算执行轨迹...";
+        setTimeout(() => worker.postMessage(rawDataRef), 50); 
+    }
     function toggleTheme() { document.documentElement.setAttribute('data-theme', document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'); }
     function switchView(v) { currentView=v; renderUI(); document.getElementById('tab-raw').classList.toggle('active-btn', v==='raw'); document.getElementById('tab-logical').classList.toggle('active-btn', v==='logical'); }
     function setSort(k) { sortKey=k; renderUI(); ['s-total','s-h','s-avg'].forEach(id=>document.getElementById(id).classList.toggle('active-btn', id==='s-'+k)); }
